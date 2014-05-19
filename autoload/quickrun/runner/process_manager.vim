@@ -48,9 +48,11 @@ function! s:runner.run(commands, input, session)
       execute 'autocmd! CursorHold,CursorHoldI * call'
       \       's:receive(' . string(key) . ')'
     augroup END
-    let self.phase = t
-    if t == 'preparing'
+    if t ==# 'preparing'
+      let self.phase = 'preparing'
       let self._message = message
+    else
+      let self.phase = 'ready'
     endif
     let self._autocmd = 1
     let self._updatetime = &updatetime
@@ -102,6 +104,7 @@ function! s:receive(key)
     if t ==# 'matched'
       let session.runner.phase = 'ready'
       call s:P.writeln(session.config.type, session.runner._message)
+      unlet session.runner._message
     else
       " silently ignore preparation outputs
     endif
