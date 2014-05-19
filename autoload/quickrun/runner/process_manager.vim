@@ -108,8 +108,6 @@ function! s:receive(key)
     else
       " silently ignore preparation outputs
     endif
-  elseif session.runner.phase == 'timedout'
-    " nop
   else
     call session.output(printf(
           \ 'Must not happen -- it should be unreachable. phase: %s',
