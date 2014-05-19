@@ -109,7 +109,9 @@ function! s:receive(key)
     call feedkeys(mode() ==# 'i' ? "\<C-g>\<ESC>" : "g\<ESC>", 'n')
     return 0
   else
-    call session.output('Must not happen -- it should be unreachable.')
+    call session.output(printf(
+          \ 'Must not happen -- it should be unreachable. phase: %s',
+          \ session.runner.phase))
     return 0
   endif
 endfunction
