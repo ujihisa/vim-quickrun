@@ -95,8 +95,7 @@ function! s:receive(key)
       call session.finish(1)
       return 1
     else " 'timedout'
-      call feedkeys(mode() ==# 'i' ? "\<C-g>\<ESC>" : "g\<ESC>", 'n')
-      return 0
+      " nop
     endif
   elseif session.runner.phase == 'preparing'
     let [out, err, t] = s:P.read(session.config.type, [session.runner.config.prompt])
@@ -106,14 +105,16 @@ function! s:receive(key)
     else
       " silently ignore preparation outputs
     endif
-    call feedkeys(mode() ==# 'i' ? "\<C-g>\<ESC>" : "g\<ESC>", 'n')
-    return 0
+  elseif session.runner.phase == 'timedout'
+    " nop
   else
     call session.output(printf(
           \ 'Must not happen -- it should be unreachable. phase: %s',
           \ session.runner.phase))
-    return 0
   endif
+
+  call feedkeys(mode() ==# 'i' ? "\<C-g>\<ESC>" : "g\<ESC>", 'n')
+  return 0
 endfunction
 
 function! s:runner.sweep()
