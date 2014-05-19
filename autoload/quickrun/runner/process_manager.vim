@@ -29,11 +29,12 @@ endfunction
 
 function! s:runner.run(commands, input, session)
   let type = a:session.config.type
+  let message = a:session.build_command(self.config.load)
   let [out, err, t] = s:execute(
         \ type,
         \ a:session,
         \ self.config.prompt,
-        \ a:session.build_command(self.config.load))
+        \ message)
   call a:session.output(out . (err ==# '' ? '' : printf('!!!%s!!!', err)))
   if t ==# 'matched'
     return 0
@@ -41,15 +42,22 @@ function! s:runner.run(commands, input, session)
     call s:P.kill(type)
     call a:session.output('!!!process is inactive. try again.!!!')
     return 0
-  else " 'timedout'
+  elseif t ==# 'timedout' || t ==# 'preparing'
     let key = a:session.continue()
     augroup plugin-quickrun-process-manager
       execute 'autocmd! CursorHold,CursorHoldI * call'
       \       's:receive(' . string(key) . ')'
     augroup END
+    let self.phase = t
+    if t == 'preparing'
+      let self._message = message
+    endif
     let self._autocmd = 1
     let self._updatetime = &updatetime
     let &updatetime = 50
+  else
+    call a:session.output(printf('Must not happen. t: %s', t))
+    return 0
   endif
 endfunction
 
@@ -58,10 +66,16 @@ function! s:execute(type, session, prompt, message)
   let cmd = g:quickrun#V.iconv(cmd, &encoding, &termencoding)
   let t = s:P.touch(a:type, cmd)
   if t ==# 'new'
-    call s:P.read_wait(a:type, 5.0, [a:prompt])
+    let [out, err, t2] = s:P.read(a:type, [a:prompt])
+    if t2 == 'matched' " wow it's so quick
+      return [out, err, t2]
+    else " it's normal
+      return [out, err, 'preparing']
+    endif
   elseif t ==# 'inactive'
     return ['', '', 'inactive']
   endif
+
   if a:message !=# ''
     call s:P.writeln(a:type, a:message)
   endif
@@ -69,15 +83,33 @@ function! s:execute(type, session, prompt, message)
 endfunction
 
 function! s:receive(key)
-  let session = quickrun#session(a:key)
+  if s:_is_cmdwin()
+    return 0
+  endif
 
-  let [out, err, t] = s:P.read(session.config.type, [session.runner.config.prompt])
-  call session.output(out . (err ==# '' ? '' : printf('!!!%s!!!', err)))
-  if t ==# 'matched'
-    call session.finish(1)
-    return 1
-  else " 'timedout'
+  let session = quickrun#session(a:key)
+  if session.runner.phase == 'ready'
+    let [out, err, t] = s:P.read(session.config.type, [session.runner.config.prompt])
+    call session.output(out . (err ==# '' ? '' : printf('!!!%s!!!', err)))
+    if t ==# 'matched'
+      call session.finish(1)
+      return 1
+    else " 'timedout'
+      call feedkeys(mode() ==# 'i' ? "\<C-g>\<ESC>" : "g\<ESC>", 'n')
+      return 0
+    endif
+  elseif session.runner.phase == 'preparing'
+    let [out, err, t] = s:P.read(session.config.type, [session.runner.config.prompt])
+    if t ==# 'matched'
+      let session.runner.phase = 'ready'
+      call s:P.writeln(session.config.type, session.runner._message)
+    else
+      " silently ignore preparation outputs
+    endif
     call feedkeys(mode() ==# 'i' ? "\<C-g>\<ESC>" : "g\<ESC>", 'n')
+    return 0
+  else
+    call session.output('Must not happen -- it should be unreachable.')
     return 0
   endif
 endfunction
@@ -93,6 +125,11 @@ endfunction
 
 function! quickrun#runner#process_manager#new()
   return deepcopy(s:runner)
+endfunction
+
+" TODO use vital's
+function! s:_is_cmdwin()
+  return bufname('%') ==# '[Command Line]'
 endfunction
 
 let &cpo = s:save_cpo
